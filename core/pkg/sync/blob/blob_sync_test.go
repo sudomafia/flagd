@@ -4,8 +4,10 @@ import (
 	"context"
 	"log"
 	"testing"
+	"testing/fstest"
 	"time"
 
+	"github.com/hairyhenderson/go-fsimpl"
 	"github.com/open-feature/flagd/core/pkg/logger"
 	"github.com/open-feature/flagd/core/pkg/sync"
 	synctesting "github.com/open-feature/flagd/core/pkg/sync/testing"
@@ -26,22 +28,30 @@ func TestSync(t *testing.T) {
 	})
 	mockCron.EXPECT().Start().Times(1)
 
+	mapfs := fstest.MapFS{
+		object: &fstest.MapFile{Data: []byte("hi"), ModTime: time.Now()},
+	}
+	fsMux := fsimpl.NewMux()
+	fsMux.Add(fsimpl.WrappedFSProvider(mapfs, scheme))
+
 	blobSync := &Sync{
-		Bucket: scheme + "://" + bucket,
+		Bucket: scheme + "://" + bucket + "/",
 		Object: object,
+		FSMux:  fsMux,
 		Cron:   mockCron,
 		Logger: logger.NewLogger(nil, false),
 	}
-	blobMock := NewMockBlob(scheme, func() *Sync {
-		return blobSync
-	})
-	blobSync.BlobURLMux = blobMock.URLMux()
 
 	ctx := context.Background()
 	dataSyncChan := make(chan sync.DataSync, 1)
 
 	config := "my-config"
-	blobMock.AddObject(object, config)
+	mapfs[object] = &fstest.MapFile{Data: []byte(config), ModTime: time.Now()}
+
+	if err := blobSync.Init(ctx); err != nil {
+		t.Errorf("init failed: %s", err)
+		return
+	}
 
 	go func() {
 		err := blobSync.Sync(ctx, dataSyncChan)
@@ -55,16 +65,16 @@ func TestSync(t *testing.T) {
 	if data.FlagData != config {
 		t.Errorf("expected content: %s, but received content: %s", config, data.FlagData)
 	}
-	tickWithConfigChange(t, mockCron, dataSyncChan, blobMock, "new config")
+	tickWithConfigChange(t, mockCron, dataSyncChan, mapfs, "new config")
 	tickWithoutConfigChange(t, mockCron, dataSyncChan)
-	tickWithConfigChange(t, mockCron, dataSyncChan, blobMock, "new config 2")
+	tickWithConfigChange(t, mockCron, dataSyncChan, mapfs, "new config 2")
 	tickWithoutConfigChange(t, mockCron, dataSyncChan)
 	tickWithoutConfigChange(t, mockCron, dataSyncChan)
 }
 
-func tickWithConfigChange(t *testing.T, mockCron *synctesting.MockCron, dataSyncChan chan sync.DataSync, blobMock *MockBlob, newConfig string) {
+func tickWithConfigChange(t *testing.T, mockCron *synctesting.MockCron, dataSyncChan chan sync.DataSync, mapfs fstest.MapFS, newConfig string) {
 	time.Sleep(1 * time.Millisecond) // sleep so the new file has different modification date
-	blobMock.AddObject(object, newConfig)
+	mapfs[object] = &fstest.MapFile{Data: []byte(newConfig), ModTime: time.Now()}
 	mockCron.Tick()
 	select {
 	case data, ok := <-dataSyncChan:
@@ -97,22 +107,26 @@ func TestReSync(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCron := synctesting.NewMockCron(ctrl)
 
+	mapfs := fstest.MapFS{
+		object: &fstest.MapFile{Data: []byte("hi"), ModTime: time.Now()},
+	}
+	fsMux := fsimpl.NewMux()
+	fsMux.Add(fsimpl.WrappedFSProvider(mapfs, scheme))
+
 	blobSync := &Sync{
-		Bucket: scheme + "://" + bucket,
+		Bucket: scheme + "://" + bucket + "/",
 		Object: object,
+		FSMux:  fsMux,
 		Cron:   mockCron,
 		Logger: logger.NewLogger(nil, false),
 	}
-	blobMock := NewMockBlob(scheme, func() *Sync {
-		return blobSync
-	})
-	blobSync.BlobURLMux = blobMock.URLMux()
 
 	ctx := context.Background()
 	dataSyncChan := make(chan sync.DataSync, 1)
+	blobSync.Init(ctx)
 
 	config := "my-config"
-	blobMock.AddObject(object, config)
+	mapfs[object] = &fstest.MapFile{Data: []byte(config), ModTime: time.Now()}
 
 	err := blobSync.ReSync(ctx, dataSyncChan)
 	if err != nil {
