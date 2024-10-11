@@ -5,8 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"time"
 
+	"github.com/hairyhenderson/go-fsimpl"
+	"github.com/hairyhenderson/go-fsimpl/blobfs"
 	"github.com/open-feature/flagd/core/pkg/logger"
 	"github.com/open-feature/flagd/core/pkg/sync"
 	"gocloud.dev/blob"
@@ -20,6 +23,7 @@ type Sync struct {
 	Cron        Cron
 	Logger      *logger.Logger
 	Interval    uint32
+	fs          fs.FS
 	ready       bool
 	lastUpdated time.Time
 }
@@ -38,7 +42,14 @@ func (hs *Sync) Init(_ context.Context) error {
 	if hs.Object == "" {
 		return errors.New("no object string set")
 	}
-	return nil
+
+	fsMux := fsimpl.NewMux()
+	fsMux.Add(blobfs.FS)
+
+	fs, err := fsMux.Lookup(fmt.Sprintf("gs://%s/%s", hs.Bucket, hs.Object))
+	hs.fs = fs
+
+	return err
 }
 
 func (hs *Sync) IsReady() bool {
