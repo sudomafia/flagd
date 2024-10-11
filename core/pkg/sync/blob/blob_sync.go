@@ -45,9 +45,7 @@ func (hs *Sync) Init(_ context.Context) error {
 		return errors.New("no object string set")
 	}
 
-	hs.uri = fmt.Sprintf("gs://%s/%s", hs.Bucket, hs.Object)
-
-	fs, err := hs.FSMux.Lookup(hs.uri)
+	fs, err := hs.FSMux.Lookup(hs.Bucket)
 	hs.fs = fs
 
 	return err
@@ -65,6 +63,7 @@ func (hs *Sync) Sync(ctx context.Context, dataSync chan<- sync.DataSync) error {
 			hs.Logger.Warn(fmt.Sprintf("sync failed: %v", err))
 		}
 	})
+
 	// Initial fetch
 	hs.Logger.Debug(fmt.Sprintf("initial sync of the %s/%s", hs.Bucket, hs.Object))
 	err := hs.sync(ctx, dataSync, false)
@@ -85,7 +84,7 @@ func (hs *Sync) ReSync(ctx context.Context, dataSync chan<- sync.DataSync) error
 }
 
 func (hs *Sync) sync(ctx context.Context, dataSync chan<- sync.DataSync, skipCheckingModTime bool) error {
-	file, err := hs.fs.Open(hs.uri)
+	file, err := hs.fs.Open(hs.Object)
 	if err != nil {
 		return fmt.Errorf("couldn't get bucket: %v", err)
 	}
