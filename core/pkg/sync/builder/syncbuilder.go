@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/hairyhenderson/go-fsimpl"
+	"github.com/hairyhenderson/go-fsimpl/blobfs"
 	"github.com/open-feature/flagd/core/pkg/logger"
 	"github.com/open-feature/flagd/core/pkg/sync"
 	blobSync "github.com/open-feature/flagd/core/pkg/sync/blob"
@@ -223,11 +225,15 @@ func (sb *SyncBuilder) newGcs(config sync.SourceConfig, logger *logger.Logger) *
 		interval = config.Interval
 	}
 
+	fsMux := fsimpl.NewMux()
+	fsMux.Add(blobfs.FS)
+
 	return &blobSync.Sync{
 		Bucket: bucketURI,
 		Object: objectName,
 
 		BlobURLMux: blob.DefaultURLMux(),
+		FSMux:      fsMux,
 
 		Logger: logger.WithFields(
 			zap.String("component", "sync"),

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/hairyhenderson/go-fsimpl"
-	"github.com/hairyhenderson/go-fsimpl/blobfs"
 	"github.com/open-feature/flagd/core/pkg/logger"
 	"github.com/open-feature/flagd/core/pkg/sync"
 	"gocloud.dev/blob"
@@ -20,6 +19,7 @@ type Sync struct {
 	Bucket     string
 	Object     string
 	BlobURLMux *blob.URLMux
+	FSMux      fsimpl.FSMux
 	Cron       Cron
 	Logger     *logger.Logger
 	Interval   uint32
@@ -45,12 +45,9 @@ func (hs *Sync) Init(_ context.Context) error {
 		return errors.New("no object string set")
 	}
 
-	fsMux := fsimpl.NewMux()
-	fsMux.Add(blobfs.FS)
-
 	hs.uri = fmt.Sprintf("gs://%s/%s", hs.Bucket, hs.Object)
 
-	fs, err := fsMux.Lookup(hs.uri)
+	fs, err := hs.FSMux.Lookup(hs.uri)
 	hs.fs = fs
 
 	return err
