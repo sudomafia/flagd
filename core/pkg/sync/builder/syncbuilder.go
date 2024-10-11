@@ -50,7 +50,7 @@ func init() {
 	regGRPC = regexp.MustCompile("^" + grpc.Prefix)
 	regGRPCSecure = regexp.MustCompile("^" + grpc.PrefixSecure)
 	regFile = regexp.MustCompile("^file:")
-	regGcs = regexp.MustCompile("^gs://.+?/")
+	regGcs = regexp.MustCompile("^(gs|s3)://.+?/")
 }
 
 type ISyncBuilder interface {
