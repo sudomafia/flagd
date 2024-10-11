@@ -17,12 +17,14 @@ import (
 )
 
 type Sync struct {
-	Bucket      string
-	Object      string
-	BlobURLMux  *blob.URLMux
-	Cron        Cron
-	Logger      *logger.Logger
-	Interval    uint32
+	Bucket     string
+	Object     string
+	BlobURLMux *blob.URLMux
+	Cron       Cron
+	Logger     *logger.Logger
+	Interval   uint32
+
+	uri         string
 	fs          fs.FS
 	ready       bool
 	lastUpdated time.Time
@@ -46,7 +48,9 @@ func (hs *Sync) Init(_ context.Context) error {
 	fsMux := fsimpl.NewMux()
 	fsMux.Add(blobfs.FS)
 
-	fs, err := fsMux.Lookup(fmt.Sprintf("gs://%s/%s", hs.Bucket, hs.Object))
+	hs.uri = fmt.Sprintf("gs://%s/%s", hs.Bucket, hs.Object)
+
+	fs, err := fsMux.Lookup(hs.uri)
 	hs.fs = fs
 
 	return err
