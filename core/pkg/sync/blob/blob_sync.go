@@ -1,10 +1,10 @@
 package blob
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"time"
 
@@ -88,17 +88,18 @@ func (hs *Sync) ReSync(ctx context.Context, dataSync chan<- sync.DataSync) error
 }
 
 func (hs *Sync) sync(ctx context.Context, dataSync chan<- sync.DataSync, skipCheckingModTime bool) error {
-	bucket, err := hs.getBucket(ctx)
+	file, err := hs.fs.Open(hs.uri)
 	if err != nil {
 		return fmt.Errorf("couldn't get bucket: %v", err)
 	}
-	defer bucket.Close()
+	defer file.Close()
 	var updated time.Time
 	if !skipCheckingModTime {
-		updated, err = hs.fetchObjectModificationTime(ctx, bucket)
+		stat, err := file.Stat()
 		if err != nil {
 			return fmt.Errorf("couldn't get object attributes: %v", err)
 		}
+		updated := stat.ModTime()
 		if hs.lastUpdated == updated {
 			hs.Logger.Debug("configuration hasn't changed, skipping fetching full object")
 			return nil
@@ -107,7 +108,9 @@ func (hs *Sync) sync(ctx context.Context, dataSync chan<- sync.DataSync, skipChe
 			hs.Logger.Warn("configuration changed but the modification time decreased instead of increasing")
 		}
 	}
-	msg, err := hs.fetchObject(ctx, bucket)
+
+	bytes, err := io.ReadAll(file)
+	msg := string(bytes)
 	if err != nil {
 		return fmt.Errorf("couldn't get object: %v", err)
 	}
@@ -117,33 +120,4 @@ func (hs *Sync) sync(ctx context.Context, dataSync chan<- sync.DataSync, skipChe
 	}
 	dataSync <- sync.DataSync{FlagData: msg, Source: hs.Bucket + hs.Object, Type: sync.ALL}
 	return nil
-}
-
-func (hs *Sync) getBucket(ctx context.Context) (*blob.Bucket, error) {
-	b, err := hs.BlobURLMux.OpenBucket(ctx, hs.Bucket)
-	if err != nil {
-		return nil, fmt.Errorf("error opening bucket %s: %v", hs.Bucket, err)
-	}
-	return b, nil
-}
-
-func (hs *Sync) fetchObjectModificationTime(ctx context.Context, bucket *blob.Bucket) (time.Time, error) {
-	if hs.Object == "" {
-		return time.Time{}, errors.New("no object string set")
-	}
-	attrs, err := bucket.Attributes(ctx, hs.Object)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("error fetching attributes for object %s/%s: %w", hs.Bucket, hs.Object, err)
-	}
-	return attrs.ModTime, nil
-}
-
-func (hs *Sync) fetchObject(ctx context.Context, bucket *blob.Bucket) (string, error) {
-	buf := bytes.NewBuffer(nil)
-	err := bucket.Download(ctx, hs.Object, buf, nil)
-	if err != nil {
-		return "", fmt.Errorf("error downloading object %s/%s: %w", hs.Bucket, hs.Object, err)
-	}
-
-	return buf.String(), nil
 }
